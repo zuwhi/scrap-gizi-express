@@ -5,42 +5,59 @@ const cheerio = require("cheerio");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Route untuk scraping
+// Fungsi untuk memeriksa apakah halaman adalah detail produk
+const isDetailPage = ($) => {
+  return $("tbody.f11").length > 0;
+};
+
+// Route untuk scraping daftar produk atau detail produk
 app.get("/scrape", async (req, res) => {
-  const productName = req.query.cari;
+  const productName = req.query.cari || "indomilk";
   const url = `https://nilaigizi.com/pencarian?cari=${productName}`;
 
   try {
-    // Mengirim request ke URL
     const { data } = await axios.get(url);
-
-    // Load HTML ke cheerio
     const $ = cheerio.load(data);
 
-    // Array untuk menampung hasil scraping
-    const results = [];
+    if (isDetailPage($)) {
+      // Jika halaman adalah detail produk, ekstrak data dari detail produk
+      const result = {};
 
-    // Lakukan scraping dan push data ke array
-    $(".row.mt-3.ml-1").each((i, el) => {
-      const productName = $(el).find(".row.text-success").text().trim();
-      const nutritionInfo = $(el).find(".row.text-body").text().trim();
-      const href = $(el).find("a").attr("href");
+      $("tbody.f11 tr").each((i, el) => {
+        const label = $(el).find("td.title strong.text-primary").first().text().trim();
+        const value = $(el).find("td.title strong.text-primary span.float-right").text().trim();
 
-      results.push({
-        product_name: productName,
-        nutrition_info: nutritionInfo,
-        link: href,
+        if (label && value) {
+          result[label] = value;
+        }
       });
-    });
 
-    // Mengirimkan hasil dalam format JSON
-    res.json(results);
+      res.json(result);
+    } else {
+      // Jika halaman adalah daftar produk, ekstrak data dari daftar produk
+      const results = [];
+
+      $(".row.mt-3.ml-1").each((i, el) => {
+        const productName = $(el).find(".row.text-success").text().trim();
+        const nutritionInfo = $(el).find(".row.text-body").text().trim();
+        const href = $(el).find("a").attr("href");
+
+        results.push({
+          product_name: productName,
+          nutrition_info: nutritionInfo,
+          link: href,
+        });
+      });
+
+      res.json(results);
+    }
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Something went wrong while scraping" });
   }
 });
 
+// Route untuk scraping detail produk
 app.get("/scrape/detail", async (req, res) => {
   const productUrl = req.query.url;
 
@@ -69,7 +86,6 @@ app.get("/scrape/detail", async (req, res) => {
   }
 });
 
-// Menjalankan server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

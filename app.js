@@ -10,6 +10,12 @@ const isDetailPage = ($) => {
   return $("tbody.f11").length > 0;
 };
 
+// Fungsi untuk membersihkan data nilai gizi
+const cleanNutritionValue = (value) => {
+  // Hapus karakter newline dan persentase
+  return value.split("\n")[0].trim();
+};
+
 // Route untuk scraping daftar produk atau detail produk
 app.get("/scrape", async (req, res) => {
   const productName = req.query.cari || "indomilk";
@@ -23,14 +29,22 @@ app.get("/scrape", async (req, res) => {
       // Jika halaman adalah detail produk, ekstrak data dari detail produk
       const result = {};
 
+      // Ambil data nilai gizi dari tabel
       $("tbody.f11 tr").each((i, el) => {
         const label = $(el).find("td.title strong.text-primary").first().text().trim();
-        const value = $(el).find("td.title strong.text-primary span.float-right").text().trim();
+        let value = $(el).find("td.title strong.text-primary span.float-right").text().trim();
 
         if (label && value) {
+          value = cleanNutritionValue(value); // Bersihkan nilai gizi
           result[label] = value;
         }
       });
+
+      // Ambil gambar pertama dari class img-thumbnail
+      const imageUrl = $(".img-thumbnail").first().attr("src");
+      if (imageUrl) {
+        result["image_url"] = imageUrl;
+      }
 
       res.json(result);
     } else {
@@ -70,14 +84,22 @@ app.get("/scrape/detail", async (req, res) => {
     const $ = cheerio.load(data);
     const result = {};
 
+    // Ambil data nilai gizi dari tabel
     $("tbody.f11 tr").each((i, el) => {
       const label = $(el).find("td.title strong.text-primary").first().text().trim();
-      const value = $(el).find("td.title strong.text-primary span.float-right").text().trim();
+      let value = $(el).find("td.title strong.text-primary span.float-right").text().trim();
 
       if (label && value) {
+        value = cleanNutritionValue(value); // Bersihkan nilai gizi
         result[label] = value;
       }
     });
+
+    // Ambil gambar pertama dari class img-thumbnail
+    const imageUrl = $(".img-thumbnail").first().attr("src");
+    if (imageUrl) {
+      result["image_url"] = imageUrl;
+    }
 
     res.json(result);
   } catch (error) {

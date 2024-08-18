@@ -5,7 +5,123 @@ const cheerio = require("cheerio");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Fungsi untuk memeriksa apakah halaman adalah detail produk
+app.get("/scrape/fatsecret", async (req, res) => {
+  const productName = req.query.q || "pocari"; // Nama produk dari query parameter
+  const url = `https://www.fatsecret.co.id/kalori-gizi/search?q=${productName}`;
+
+  try {
+    const { data } = await axios.get(url);
+    const $ = cheerio.load(data);
+    const results = [];
+
+    $("tbody tr").each((i, el) => {
+      const productName = $(el).find("a.prominent").text().trim();
+      const brandName = $(el).find("a.brand").text().trim();
+      let details = $(el).find(".smallText.greyText.greyLink").text().trim();
+      const href = $(el).find("a.prominent").attr("href");
+      const link = `https://www.fatsecret.co.id${href}`;
+
+      // Memastikan details tidak kosong dan mengandung teks yang diharapkan
+      if (details && details.includes(" - ")) {
+        const [portionInfo, nutritionInfo] = details.split(" - ");
+        let [calories, fat, carbs, protein] = nutritionInfo.split("|").map((item) => item.trim());
+
+        // Membersihkan karakter tidak diinginkan dan teks tambahan
+        protein = protein
+          .replace(/[\n\t]/g, "")
+          .replace("Informasi Gizi", "")
+          .trim();
+
+        results.push({
+          product_name: productName,
+          brand_name: brandName,
+          portion_info: portionInfo.trim(),
+          calories: calories.trim().replace("Kalori:", "").trim(),
+          fat: fat.trim().replace("Lemak:", "").trim(),
+          carbs: carbs.trim().replace("Karb:", "").trim(),
+          protein: protein.trim().replace("Prot:", "").trim(),
+          link: link,
+        });
+      }
+    });
+
+    // Mengirimkan response dalam format JSON
+    res.json(results);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Something went wrong while scraping FatSecret" });
+  }
+});
+
+app.get("/scrape/fatsecret/product", async (req, res) => {
+  const productUrl = req.query.url;
+
+  if (!productUrl) {
+    return res.status(400).json({ error: "URL produk diperlukan" });
+  }
+
+  try {
+    const { data } = await axios.get(productUrl);
+    const $ = cheerio.load(data);
+
+    const productDetails = {};
+
+    // Mengambil informasi gizi dari elemen yang disebutkan
+    const servingSize = $(".serving_size_value").text().trim();
+    const energyKJ = $(".nutrition_facts .nutrient").eq(1).next(".tRight").text().trim();
+    const energyKcal = $(".nutrition_facts .nutrient").eq(3).next(".tRight").text().trim();
+    const fat = $(".nutrition_facts .nutrient")
+      .filter((i, el) => $(el).text().trim() === "Lemak")
+      .next(".tRight")
+      .text()
+      .trim();
+    const saturatedFat = $(".nutrition_facts .nutrient.sub")
+      .filter((i, el) => $(el).text().trim() === "Lemak Jenuh")
+      .next(".tRight")
+      .text()
+      .trim();
+    const protein = $(".nutrition_facts .nutrient")
+      .filter((i, el) => $(el).text().trim() === "Protein")
+      .next(".tRight")
+      .text()
+      .trim();
+    const carbs = $(".nutrition_facts .nutrient")
+      .filter((i, el) => $(el).text().trim() === "Karbohidrat")
+      .next(".tRight")
+      .text()
+      .trim();
+    const sugars = $(".nutrition_facts .nutrient.sub")
+      .filter((i, el) => $(el).text().trim() === "Gula")
+      .next(".tRight")
+      .text()
+      .trim();
+    const sodium = $(".nutrition_facts .nutrient")
+      .filter((i, el) => $(el).text().trim() === "Sodium")
+      .next(".tRight")
+      .text()
+      .trim();
+
+    // Menyusun hasil scraping ke dalam objek JSON
+    productDetails.serving_size = servingSize;
+    productDetails.energy_kj = energyKJ;
+    productDetails.energy_kcal = energyKcal;
+    productDetails.fat = fat;
+    productDetails.saturated_fat = saturatedFat;
+    productDetails.protein = protein;
+    productDetails.carbs = carbs;
+    productDetails.sugars = sugars;
+    productDetails.sodium = sodium;
+
+    // Mengirimkan hasil sebagai respon JSON
+    res.json(productDetails);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Something went wrong while scraping product details" });
+  }
+});
+
+// NILAI GIZI.COM///////////
+
 const isDetailPage = ($) => {
   return $("tbody.f11").length > 0;
 };
@@ -17,7 +133,7 @@ const cleanNutritionValue = (value) => {
 };
 
 // Route untuk scraping daftar produk atau detail produk
-app.get("/scrape", async (req, res) => {
+app.get("/scrape/ng/", async (req, res) => {
   const productName = req.query.cari || "indomilk";
   const url = `https://nilaigizi.com/pencarian?cari=${productName}`;
 
@@ -72,7 +188,7 @@ app.get("/scrape", async (req, res) => {
 });
 
 // Route untuk scraping detail produk
-app.get("/scrape/detail", async (req, res) => {
+app.get("/scrape/ng/detail", async (req, res) => {
   const productUrl = req.query.url;
 
   if (!productUrl) {
